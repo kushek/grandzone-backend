@@ -7,7 +7,8 @@ const PORT = 3000;
 const DATA_FILE = "products.json";
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '20mb' }));
+
 
 function loadProducts() {
   if (!fs.existsSync(DATA_FILE)) return [];
