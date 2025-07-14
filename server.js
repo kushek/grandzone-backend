@@ -1,46 +1,70 @@
 const express = require("express");
-const fs = require("fs");
 const cors = require("cors");
+const { MongoClient, ObjectId } = require("mongodb");
 
 const app = express();
-const PORT = 3000;
-const DATA_FILE = "products.json";
-
 app.use(cors());
-app.use(express.json({ limit: '20mb' }));
+app.use(express.json({ limit: "20mb" }));
 
+// MongoDB Connection
+const uri = "mongodb+srv://grandzone:grandzone123@cluster0.nvelbne.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
+const client = new MongoClient(uri);
+const dbName = "grandzone";
+const collectionName = "products";
 
-function loadProducts() {
-  if (!fs.existsSync(DATA_FILE)) return [];
-  return JSON.parse(fs.readFileSync(DATA_FILE));
+// Connect and cache DB
+let collection;
+
+async function connectToDB() {
+  try {
+    await client.connect();
+    const db = client.db(dbName);
+    collection = db.collection(collectionName);
+    console.log("✅ Connected to MongoDB Atlas");
+  } catch (err) {
+    console.error("❌ MongoDB connection error:", err);
+  }
 }
 
-function saveProducts(products) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(products, null, 2));
-}
+connectToDB();
 
-app.get("/products", (req, res) => {
-  const products = loadProducts();
-  res.json(products);
+// 📥 Get all products
+app.get("/products", async (req, res) => {
+  try {
+    const products = await collection.find({}).toArray();
+    res.json(products);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch products" });
+  }
 });
 
-app.post("/products", (req, res) => {
-  const products = loadProducts();
-  const newProduct = req.body;
-  newProduct.id = Date.now();
-  products.push(newProduct);
-  saveProducts(products);
-  res.status(201).json(newProduct);
+// ➕ Add a product
+app.post("/products", async (req, res) => {
+  const product = req.body;
+  try {
+    const result = await collection.insertOne(product);
+    res.json({ insertedId: result.insertedId });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to add product" });
+  }
 });
 
-app.delete("/products/:id", (req, res) => {
-  let products = loadProducts();
-  const id = parseInt(req.params.id);
-  products = products.filter(p => p.id !== id);
-  saveProducts(products);
-  res.json({ success: true });
+// ❌ Delete a product by ID
+app.delete("/products/:id", async (req, res) => {
+  const id = req.params.id;
+  try {
+    const result = await collection.deleteOne({ _id: new ObjectId(id) });
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+    res.json({ deletedId: id });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to delete product" });
+  }
 });
 
+// Start server
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 Backend running at http://localhost:${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
